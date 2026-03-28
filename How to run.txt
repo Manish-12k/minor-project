@@ -1,0 +1,28 @@
+Prerequisites
+-------------
+- Node.js 18+ and npm
+- Python 3.8+ and pip
+
+1) Install Python dependencies (from repo root OR backend folder — same packages):
+   cd <path-to>\uidai-passive-bot-detection
+   pip install -r requirements.txt
+   (or: pip install -r backend\requirements.txt)
+
+2) Start the backend API (from the backend folder):
+   cd <path-to>\uidai-passive-bot-detection\backend
+   python ml_engine\inference\server.py
+
+   Default URL: http://localhost:8000
+   Optional: set PORT or FLASK_PORT for a different port (e.g. Kubernetes).
+
+3) Start the frontend (new terminal):
+   cd <path-to>\uidai-passive-bot-detection\frontend
+   npm install
+   npm start
+
+   App: http://localhost:3000
+
+4) Optional: point the UI at another API host
+   Copy frontend\.env.example to frontend\.env.local and set:
+   REACT_APP_API_URL=http://your-backend-host:port
+   Restart npm start after changes.

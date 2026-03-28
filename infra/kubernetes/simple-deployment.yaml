@@ -1,0 +1,101 @@
+---
+# Backend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot-detection-backend
+  namespace: bot-detection
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot-detection-backend
+  template:
+    metadata:
+      labels:
+        app: bot-detection-backend
+    spec:
+      containers:
+      - name: backend
+        image: bot-detection:backend-latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bot-detection-backend-service
+  namespace: bot-detection
+spec:
+  type: ClusterIP
+  selector:
+    app: bot-detection-backend
+  ports:
+  - port: 8000
+    targetPort: 8000
+
+---
+# Frontend Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bot-detection-frontend
+  namespace: bot-detection
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bot-detection-frontend
+  template:
+    metadata:
+      labels:
+        app: bot-detection-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: bot-detection:frontend-latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 3000
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 3000
+          initialDelaySeconds: 30
+          periodSeconds: 5
+
+---
+# Frontend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: bot-detection-frontend-service
+  namespace: bot-detection
+spec:
+  type: LoadBalancer
+  selector:
+    app: bot-detection-frontend
+  ports:
+  - port: 80
+    targetPort: 3000

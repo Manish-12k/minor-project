@@ -1,216 +1,261 @@
-# ML Model serving and inference API - FIXED IMPORTS
+"""
+UIDAI Bot Detection - Backend API Server
+Flask REST API for passive bot detection with XGBoost model
+"""
 
-import asyncio
-import time
-import json
-import logging
 import os
 import sys
+import json
+import pickle
+import logging
+import traceback
+from datetime import datetime
+from typing import Dict, Any
 
-# Add parent directories to Python path so imports work
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Now try to import the ensemble model
-try:
-    from ml_engine.models.ensemble_detector import BotDetectionEnsemble
-except ImportError:
-    try:
-        from models.ensemble_detector import BotDetectionEnsemble
-    except ImportError:
-        logger.warning("Could not import BotDetectionEnsemble - using stub")
-        BotDetectionEnsemble = None
-
-from typing import Dict, Optional
-
-
-class BotDetectionInference:
-    def __init__(self, model_path: str = '/models/'):
-        try:
-            if BotDetectionEnsemble:
-                self.ensemble = BotDetectionEnsemble(model_path)
-            else:
-                self.ensemble = None
-                logger.warning("Using stub model - no real ML predictions")
-        except Exception as e:
-            logger.warning(f"Ensemble model init warning: {e}")
-            self.ensemble = None
-
-        self.session_cache = {}
-        self.cache_ttl = 3600
-
-    async def predict(self, telemetry: Dict, session_id: str) -> Dict:
-        """Real-time inference with <100ms latency target"""
-        start_time = time.time()
-
-        try:
-            features = self._extract_features(telemetry)
-            session_context = self.session_cache.get(session_id, {})
-
-            if self.ensemble:
-                prediction = self.ensemble.predict_ensemble(features)
-            else:
-                # Stub prediction when model not loaded
-                prediction = {
-                    'bot_probability': 0.3,  # Low risk by default
-                    'risk_score': 30,
-                    'model_votes': {
-                        'xgboost': 0.3,
-                        'lstm': 0.25,
-                        'gcn': 0.35,
-                        'anomaly': 0.0
-                    },
-                    'confidence': 0.5,
-                    'reasoning': 'Stub model (no trained weights loaded)'
-                }
-
-            risk_score = self._calculate_risk_score(prediction, session_context)
-
-            self.session_cache[session_id] = {
-                **session_context,
-                'last_prediction': prediction,
-                'last_timestamp': time.time(),
-                'prediction_count': session_context.get('prediction_count', 0) + 1
-            }
-
-            latency = (time.time() - start_time) * 1000
-
-            if latency > 100:
-                logger.warning(f"Inference latency exceeded SLA: {latency:.2f}ms")
-
-            return {
-                'risk_score': risk_score,
-                'bot_probability': float(prediction.get('bot_probability', 0.5)),
-                'model_votes': prediction.get('model_votes', {}),
-                'confidence': float(prediction.get('confidence', 0)),
-                'latency_ms': round(latency, 2),
-                'recommended_action': self._action_from_risk(risk_score),
-                'reasoning': prediction.get('reasoning', '')
-            }
-
-        except Exception as e:
-            logger.error(f"Inference error: {e}", exc_info=True)
-            return {
-                'risk_score': 50,
-                'fallback': True,
-                'error': str(e)
-            }
-
-    def _extract_features(self, telemetry: Dict) -> Dict:
-        """Extract ML features from raw telemetry"""
-        try:
-            return {
-                'mouse': telemetry.get('mouse', {}),
-                'keyboard': telemetry.get('keyboard', {}),
-                'device': telemetry.get('device', {}),
-                'timing': telemetry.get('timing', {}),
-                'touch': telemetry.get('touch', {}),
-                'event_sequence': telemetry.get('event_sequence', [])
-            }
-        except Exception as e:
-            logger.error(f"Feature extraction error: {e}")
-            return {}
-
-    def _calculate_risk_score(self, prediction: Dict, session_context: Dict) -> int:
-        """Convert ML score to risk (0-100)"""
-        try:
-            base_score = int(prediction.get('bot_probability', 0.5) * 100)
-            previous_scores = session_context.get('scores_history', [])
-            if previous_scores:
-                avg_previous = sum(previous_scores) / len(previous_scores)
-                if abs(base_score - avg_previous) < 10:
-                    base_score = int(base_score * 1.2)
-            return min(100, max(0, base_score))
-        except:
-            return 50
-
-    def _action_from_risk(self, risk_score: int) -> str:
-        """Determine action based on risk"""
-        if risk_score < 30:
-            return 'ACCEPT'
-        elif risk_score < 60:
-            return 'SOFT_CHALLENGE'
-        else:
-            return 'ESCALATE'
-
-
-# Flask app for serving
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import numpy as np
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize Flask
 app = Flask(__name__)
-CORS(app)  # Enable cross-origin requests
+CORS(app)
 
-inference = BotDetectionInference()
+# Global model and scaler
+model = None
+scaler = None
 
+def load_model_and_scaler():
+    """Load the trained XGBoost model and scaler"""
+    global model, scaler
 
-@app.route('/api/predict', methods=['POST', 'OPTIONS'])
-def predict():
-    """Predict bot probability from telemetry"""
-    if request.method == 'OPTIONS':
-        return '', 204
+    logger.info("=" * 70)
+    logger.info("Loading ML Model and Scaler...")
+    logger.info("=" * 70)
 
     try:
+        # Get absolute path to models directory
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        project_root = os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))
+        models_dir = os.path.join(project_root, 'backend', 'ml_engine', 'models')
+
+        model_path = os.path.join(models_dir, 'xgboost_bot_detector_latest.pkl')
+        scaler_path = os.path.join(models_dir, 'scaler_latest.pkl')
+
+        logger.info(f"Model path: {model_path}")
+        logger.info(f"Scaler path: {scaler_path}")
+
+        # Load model
+        if not os.path.exists(model_path):
+            logger.error(f"❌ Model file not found: {model_path}")
+            return False
+
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+        logger.info(f"✅ Model loaded successfully: {type(model).__name__}")
+
+        # Load scaler
+        if not os.path.exists(scaler_path):
+            logger.error(f"❌ Scaler file not found: {scaler_path}")
+            return False
+
+        with open(scaler_path, 'rb') as f:
+            scaler = pickle.load(f)
+        logger.info(f"✅ Scaler loaded successfully: {type(scaler).__name__}")
+
+        logger.info("=" * 70)
+        logger.info("✅ Models loaded successfully!")
+        logger.info("=" * 70)
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Error loading models: {e}")
+        logger.error(traceback.format_exc())
+        return False
+
+def predict_risk(telemetry: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Predict bot risk from telemetry data
+
+    Returns risk score (0-100) and recommended action
+    """
+    global model, scaler
+
+    try:
+        # Extract telemetry data
+        mouse_data = telemetry.get('mouse', {}) or {}
+        keyboard_data = telemetry.get('keyboard', {}) or {}
+        timing_data = telemetry.get('timing', {}) or {}
+        device_data = telemetry.get('device', {}) or {}
+
+        headless_info = timing_data.get('headless_indicators') or {}
+        headless_detected = 1.0 if headless_info.get('isHeadless') else 0.0
+
+        interaction_ms = timing_data.get('total_interaction_time_ms')
+        if interaction_ms is None:
+            interaction_ms = device_data.get('total_interaction_time_ms', 0)
+        interaction_ms = float(interaction_ms or 0)
+
+        # Build feature vector (11 features) — order must match ml_engine/retrain/pipeline.py
+        features = np.array([[
+            mouse_data.get('movementEntropy', 0),                           # 0
+            mouse_data.get('velocityStats', {}).get('mean', 0),             # 1
+            mouse_data.get('velocityStats', {}).get('stddev', 0),           # 2
+            mouse_data.get('velocityStats', {}).get('max', 0),              # 3
+            mouse_data.get('totalMovements', 0),                            # 4
+            keyboard_data.get('typingSpeed', 0),                            # 5
+            keyboard_data.get('keystrokeEntropy', 0),                       # 6
+            keyboard_data.get('errorRate', 0),                              # 7
+            timing_data.get('event_loop_jitter', 0),                        # 8
+            headless_detected,                                              # 9
+            interaction_ms                                                  # 10
+        ]])
+
+        logger.info(f"Features extracted: {features}")
+
+        # Check if model is loaded
+        if model is None or scaler is None:
+            logger.warning("⚠️ Model or scaler not loaded - returning default")
+            return {
+                'risk_score': 30,
+                'bot_probability': 0.30,
+                'recommended_action': 'SOFT_CHALLENGE',
+                'reasoning': 'Model not loaded'
+            }
+
+        # Scale features
+        features_scaled = scaler.transform(features)
+        logger.info(f"Features scaled: {features_scaled}")
+
+        # Get prediction
+        bot_probability = float(model.predict_proba(features_scaled)[0][1])
+        risk_score = int(bot_probability * 100)
+
+        # Determine action
+        if risk_score < 30:
+            action = 'ALLOW'
+            reasoning = 'Low risk - human-like behavior detected'
+        elif risk_score < 60:
+            action = 'SOFT_CHALLENGE'
+            reasoning = 'Medium risk - CAPTCHA challenge recommended'
+        else:
+            action = 'BLOCK'
+            reasoning = 'High risk - bot behavior detected'
+
+        logger.info(f"Prediction: risk={risk_score}, action={action}")
+
+        return {
+            'risk_score': risk_score,
+            'bot_probability': bot_probability,
+            'recommended_action': action,
+            'reasoning': reasoning
+        }
+
+    except Exception as e:
+        logger.error(f"Error in prediction: {e}")
+        logger.error(traceback.format_exc())
+        return {
+            'risk_score': 30,
+            'bot_probability': 0.30,
+            'recommended_action': 'SOFT_CHALLENGE',
+            'reasoning': f'Error: {str(e)}'
+        }
+
+# ===== ROUTES =====
+
+@app.route('/health', methods=['GET'])
+def health_check():
+    """Health check endpoint"""
+    return jsonify({
+        'message': 'Bot Detection API is running',
+        'status': 'ok',
+        'model_loaded': model is not None,
+        'scaler_loaded': scaler is not None,
+        'timestamp': datetime.now().isoformat()
+    }), 200
+
+@app.route('/api/predict', methods=['POST'])
+def predict():
+    """Bot detection prediction endpoint"""
+    try:
+        # Get JSON data
         data = request.get_json()
 
         if not data:
             return jsonify({'error': 'No JSON data provided'}), 400
 
         telemetry = data.get('telemetry', {})
-        session_id = data.get('session_id', 'default-session')
+        session_id = data.get('session_id', 'unknown')
 
-        # Run async prediction in sync context
-        import asyncio
-        result = asyncio.run(inference.predict(telemetry, session_id))
+        logger.info(f"\n{'='*70}")
+        logger.info(f"Prediction Request - Session: {session_id}")
+        logger.info(f"{'='*70}")
+
+        # Predict
+        import time
+        start_time = time.time()
+        result = predict_risk(telemetry)
+        latency_ms = (time.time() - start_time) * 1000
+
+        result['latency_ms'] = latency_ms
+
+        logger.info(f"Response: {json.dumps(result, indent=2)}")
+        logger.info(f"{'='*70}\n")
 
         return jsonify(result), 200
+
     except Exception as e:
-        logger.error(f"API error: {e}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error processing request: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
+@app.route('/api/debug', methods=['GET'])
+def debug_info():
+    """Debug information endpoint"""
+    return jsonify({
+        'model_loaded': model is not None,
+        'scaler_loaded': scaler is not None,
+        'working_directory': os.getcwd(),
+        'python_version': sys.version
+    }), 200
 
-@app.route('/health', methods=['GET'])
-def health():
-    """Health check endpoint"""
-    return jsonify({'status': 'ok', 'message': 'Bot Detection API is running'}), 200
+# ===== STARTUP =====
 
-
-@app.route('/api/risk-score', methods=['POST'])
-def risk_score():
-    """Calculate risk score from ML prediction"""
-    try:
-        data = request.get_json()
-        prediction = data.get('prediction', {})
-        session_context = data.get('session_context', {})
-
-        score = inference._calculate_risk_score(prediction, session_context)
-
-        return jsonify({
-            'risk_score': score,
-            'action': inference._action_from_risk(score)
-        }), 200
-    except Exception as e:
-        logger.error(f"Risk score API error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-
-if __name__ == '__main__':
-    print("=" * 70)
+def main():
+    """Main entry point"""
+    print("\n" + "=" * 70)
     print("UIDAI BOT DETECTION - Backend API Server")
     print("=" * 70)
-    print(f"Starting Flask server on http://localhost:8000")
-    print(f"Health check: http://localhost:8000/health")
-    print(f"Predict API: POST http://localhost:8000/api/predict")
-    print(f"Python version: {sys.version}")
-    print(f"Working directory: {os.getcwd()}")
-    print("=" * 70)
 
-    try:
-        app.run(host='0.0.0.0', port=8000, debug=False, threaded=True)
-    except Exception as e:
-        print(f"Error starting server: {e}")
-        print("\nMake sure these packages are installed:")
-        print("  pip install flask flask-cors xgboost tensorflow scikit-learn")
+    logger.info(f"Working directory: {os.getcwd()}")
+    logger.info(f"Python version: {sys.version}")
+
+    # Load models
+    if not load_model_and_scaler():
+        logger.error("\n❌ Failed to load models!")
+        logger.error("Run: python ml_engine/retrain/pipeline.py")
+        sys.exit(1)
+
+    port = int(os.environ.get('PORT', os.environ.get('FLASK_PORT', '8000')))
+
+    logger.info("\nStarting Flask server...")
+    logger.info(f"Health check: GET http://localhost:{port}/health")
+    logger.info(f"Predict API: POST http://localhost:{port}/api/predict")
+    print("=" * 70 + "\n")
+
+    # Start server
+    app.run(
+        host='0.0.0.0',
+        port=port,
+        debug=False,
+        use_reloader=False
+    )
+
+if __name__ == '__main__':
+    main()

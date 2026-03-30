@@ -12,7 +12,7 @@ import traceback
 from datetime import datetime
 from typing import Dict, Any
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import numpy as np
 
@@ -23,8 +23,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize Flask
-app = Flask(__name__)
+# Resolve backend/build for serving React
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(CURRENT_DIR)))
+REACT_BUILD_DIR = os.path.join(BACKEND_DIR, 'build')
+
+# Initialize Flask (optionally serves React build)
+app = Flask(__name__, static_folder=REACT_BUILD_DIR, static_url_path='')
 CORS(app)
 
 # Global model and scaler
@@ -259,3 +264,51 @@ def main():
 
 if __name__ == '__main__':
     main()
+else:
+    # When run under a WSGI server (e.g., gunicorn), ensure the model is loaded
+    # during worker startup. If loading fails, fail fast so deployment doesn't
+    # look "healthy" while returning default scores.
+    if not load_model_and_scaler():
+        raise RuntimeError("Failed to load ML model/scaler on startup")
+
+
+# ===== REACT STATIC SERVING (optional) =====
+
+@app.route('/', methods=['GET'])
+def serve_react_index():
+    """
+    Serve React index.html if build exists; otherwise provide a helpful message.
+    """
+    index_path = os.path.join(app.static_folder or '', 'index.html')
+    if app.static_folder and os.path.exists(index_path):
+        return send_from_directory(app.static_folder, 'index.html')
+
+    return jsonify({
+        'message': 'Backend is running. React build not found.',
+        'expected_react_build_dir': app.static_folder,
+        'hint': 'Run `npm run build` in frontend and move/copy the build folder to backend/build/.'
+    }), 200
+
+
+@app.route('/<path:path>', methods=['GET'])
+def serve_react_static_or_fallback(path: str):
+    """
+    Serve static files from React build. If the file doesn't exist, fall back to
+    index.html so React Router (SPA) routes work.
+    """
+    if not app.static_folder:
+        return jsonify({'error': 'React build directory not configured'}), 404
+
+    file_path = os.path.join(app.static_folder, path)
+    if os.path.exists(file_path):
+        return send_from_directory(app.static_folder, path)
+
+    # SPA fallback
+    index_path = os.path.join(app.static_folder, 'index.html')
+    if os.path.exists(index_path):
+        return send_from_directory(app.static_folder, 'index.html')
+
+    return jsonify({
+        'error': 'React build not found',
+        'expected_react_build_dir': app.static_folder
+    }), 404

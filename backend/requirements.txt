@@ -16,3 +16,4 @@ python-dateutil==2.8.2
 # Serialization
 joblib==1.3.2
 msgpack==1.0.7
+gunicorn

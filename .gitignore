@@ -1,0 +1,41 @@
+.DS_Store
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ---- Node / React ----
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# CRA / TS build caches
+**/.cache/
+*.tsbuildinfo
+.eslintcache
+
+# Production builds (should be generated during deploy)
+frontend/build/
+backend/build/
+build/
+
+# Env files
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# IDE
+.idea/
+.vscode/

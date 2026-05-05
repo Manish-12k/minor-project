@@ -26,3 +26,19 @@ Prerequisites
    Copy frontend\.env.example to frontend\.env.local and set:
    REACT_APP_API_URL=http://your-backend-host:port
    Restart npm start after changes.
+
+Deploy (Render) suggestion
+--------------------------
+If you do NOT commit backend/build (recommended), make Render build the React app:
+
+Root Directory → backend
+Build Command →
+  pip install -r requirements.txt
+  cd ..\frontend
+  npm ci
+  npm run build
+  Remove-Item -Recurse -Force ..\backend\build -ErrorAction SilentlyContinue
+  Copy-Item -Recurse -Force build ..\backend\build
+
+Start Command →
+  gunicorn ml_engine.inference.server:app

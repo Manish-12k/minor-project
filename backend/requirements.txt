@@ -1,5 +1,7 @@
 # Same package set as repo root requirements.txt — install either file.
 # Core dependencies (lightweight)
+setuptools
+wheel
 Flask==3.0.0
 Flask-CORS==4.0.0
 

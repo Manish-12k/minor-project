@@ -272,17 +272,13 @@ def run_bot_tests():
             'error': ''
         }), 200
 
-    except subprocess.TimeoutExpired:
-        logger.error("Bot tests timed out")
-        return jsonify({
-            'success': False,
-            'message': 'Bot tests timed out after 60 seconds'
-        }), 500
     except Exception as e:
         logger.error(f"Error running bot tests: {e}")
+        logger.error(traceback.format_exc())
         return jsonify({
             'success': False,
-            'message': f'Error running bot tests: {str(e)}'
+            'message': f'Error running bot tests: {str(e)}',
+            'error': traceback.format_exc()
         }), 500
 
 # ===== STARTUP =====

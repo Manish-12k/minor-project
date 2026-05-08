@@ -91,12 +91,23 @@ const AdminDashboard: React.FC = () => {
     setTestResults('');
 
     try {
-      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://minor-project-backend-zp8v.onrender.com'}/api/run-bot-tests`, {
+      const apiUrl = process.env.REACT_APP_API_URL || 'https://minor-project-backend-zp8v.onrender.com';
+      const response = await fetch(`${apiUrl}/api/run-bot-tests`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         }
       });
+
+      // Check if response is ok
+      if (!response.ok) {
+        const responseText = await response.text();
+        console.error(`HTTP Error ${response.status}: ${responseText}`);
+        setTestResults(`❌ Backend error (HTTP ${response.status})\n\nMake sure the backend is running and accessible at:\n${apiUrl}\n\nResponse: ${responseText.substring(0, 500)}`);
+        await db.logError(`Bot tests failed with HTTP ${response.status}`);
+        setTestRunning(false);
+        return;
+      }
 
       const result = await response.json();
 
@@ -111,7 +122,7 @@ const AdminDashboard: React.FC = () => {
       }
     } catch (error) {
       console.error('Error running bot tests:', error);
-      setTestResults(`❌ Error connecting to backend: ${error}`);
+      setTestResults(`❌ Error connecting to backend: ${error}\n\nMake sure:\n1. Backend is running\n2. CORS is enabled\n3. API URL is correct`);
       await db.logError(`Bot test connection error: ${error}`);
     } finally {
       setTestRunning(false);

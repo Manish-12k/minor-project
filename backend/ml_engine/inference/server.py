@@ -240,10 +240,14 @@ def run_bot_tests():
         logger.info("Starting bot tests...")
 
         # Get the backend directory path
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        current_file = os.path.abspath(__file__)
+        logger.info(f"Current file path: {current_file}")
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
+        logger.info(f"Calculated backend dir: {backend_dir}")
 
         # Get the API URL (use environment variable or construct from request)
         api_url = os.environ.get('API_URL') or 'https://minor-project-backend-zp8v.onrender.com'
+        logger.info(f"Using API URL: {api_url}")
 
         # Run the bot simulator with the API URL
         result = subprocess.run(

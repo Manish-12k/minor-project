@@ -15,7 +15,7 @@ from typing import Dict, Any
 class BotSimulator:
     """Simulates different types of bots trying to bypass detection"""
 
-    def __init__(self, api_url: str = "http://localhost:8000"):
+    def __init__(self, api_url: str = "https://minor-project-delta-smoky.vercel.app"):
         self.api_url = api_url
         self.session_counter = 0
 

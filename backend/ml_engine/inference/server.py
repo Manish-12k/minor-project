@@ -230,9 +230,24 @@ def debug_info():
         'python_version': sys.version
     }), 200
 
+@app.route('/api/simple-test', methods=['POST'])
+def simple_test():
+    """Simple test endpoint to verify bot test infrastructure"""
+    logger.info("Simple test endpoint called")
+    return jsonify({
+        'success': True,
+        'message': 'Simple test passed',
+        'backend_path': os.path.abspath(__file__),
+        'backend_dir': os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    }), 200
+
 @app.route('/api/run-bot-tests', methods=['POST'])
 def run_bot_tests():
     """Run bot detection tests using the bot simulator"""
+    logger.info("=" * 70)
+    logger.info("BOT TEST ENDPOINT CALLED")
+    logger.info("=" * 70)
+
     try:
         import sys
         import os
@@ -240,9 +255,23 @@ def run_bot_tests():
 
         logger.info("Starting bot tests...")
 
-        # Import the bot simulator module directly
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-        from bot_simulator import BotSimulator
+        # First, add the backend directory to path
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        logger.info(f"Backend dir: {backend_dir}")
+        sys.path.insert(0, backend_dir)
+
+        logger.info("Attempting to import BotSimulator...")
+        try:
+            from bot_simulator import BotSimulator
+            logger.info("✅ BotSimulator imported successfully")
+        except ImportError as e:
+            logger.error(f"❌ Failed to import BotSimulator: {e}")
+            logger.error(traceback.format_exc())
+            return jsonify({
+                'success': False,
+                'message': f'Failed to import BotSimulator: {str(e)}',
+                'error': traceback.format_exc()
+            }), 500
 
         # Get the API URL for this server
         api_url = os.environ.get('API_URL') or 'https://minor-project-backend-zp8v.onrender.com'
@@ -253,18 +282,27 @@ def run_bot_tests():
         sys.stdout = captured_output = StringIO()
 
         try:
+            logger.info("Creating BotSimulator instance...")
             # Create simulator and run tests
             simulator = BotSimulator(api_url)
+            logger.info("Running tests...")
             simulator.run_all_tests()
+            logger.info("Tests completed")
 
             # Get the captured output
             output = captured_output.getvalue()
 
+        except Exception as inner_e:
+            output = captured_output.getvalue()
+            logger.error(f"Error during test execution: {inner_e}")
+            logger.error(traceback.format_exc())
+            raise inner_e
         finally:
             # Restore stdout
             sys.stdout = old_stdout
 
         logger.info("Bot tests completed successfully")
+        logger.info("=" * 70)
         return jsonify({
             'success': True,
             'message': 'Bot tests completed successfully',
@@ -273,8 +311,9 @@ def run_bot_tests():
         }), 200
 
     except Exception as e:
-        logger.error(f"Error running bot tests: {e}")
+        logger.error(f"❌ Error running bot tests: {e}")
         logger.error(traceback.format_exc())
+        logger.info("=" * 70)
         return jsonify({
             'success': False,
             'message': f'Error running bot tests: {str(e)}',

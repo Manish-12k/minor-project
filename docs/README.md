@@ -39,11 +39,11 @@ npm install
 # Start React development server
 npm start
 
-# App will open at http://localhost:3000
+# App will open at http://localhost:3000](https://minor-project-delta-smoky.vercel.app/
 
 🎮 How to Use
 Regular User Login
-Open http://localhost:3000
+Open https://minor-project-delta-smoky.vercel.app/
 Enter any 12-digit number as Aadhar
 Enter the CAPTCHA code shown
 Click "Send OTP"
@@ -198,4 +198,4 @@ Can be cleared anytime
    - Validates detection accuracy
    - Performance metrics
 
-### 📊 Test Results:
+

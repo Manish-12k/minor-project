@@ -250,6 +250,7 @@ def run_bot_tests():
 
     try:
         import time
+        import requests
         
         logger.info("Starting simple bot tests...")
         

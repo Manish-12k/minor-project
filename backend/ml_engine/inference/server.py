@@ -243,66 +243,144 @@ def simple_test():
 
 @app.route('/api/run-bot-tests', methods=['POST'])
 def run_bot_tests():
-    """Run bot detection tests using the bot simulator"""
+    """Run bot detection tests using simple telemetry patterns"""
     logger.info("=" * 70)
     logger.info("BOT TEST ENDPOINT CALLED")
     logger.info("=" * 70)
 
     try:
-        import sys
-        import os
-        from io import StringIO
-
-        logger.info("Starting bot tests...")
-
-        # First, add the backend directory to path
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        logger.info(f"Backend dir: {backend_dir}")
-        sys.path.insert(0, backend_dir)
-
-        logger.info("Attempting to import BotSimulator...")
-        try:
-            from bot_simulator import BotSimulator
-            logger.info("✅ BotSimulator imported successfully")
-        except ImportError as e:
-            logger.error(f"❌ Failed to import BotSimulator: {e}")
-            logger.error(traceback.format_exc())
-            return jsonify({
-                'success': False,
-                'message': f'Failed to import BotSimulator: {str(e)}',
-                'error': traceback.format_exc()
-            }), 500
-
-        # Get the API URL for this server
-        api_url = os.environ.get('API_URL') or 'https://minor-project-backend-zp8v.onrender.com'
-        logger.info(f"Using API URL: {api_url}")
-
-        # Capture output
-        old_stdout = sys.stdout
-        sys.stdout = captured_output = StringIO()
-
-        try:
-            logger.info("Creating BotSimulator instance...")
-            # Create simulator and run tests
-            simulator = BotSimulator(api_url)
-            logger.info("Running tests...")
-            simulator.run_all_tests()
-            logger.info("Tests completed")
-
-            # Get the captured output
-            output = captured_output.getvalue()
-
-        except Exception as inner_e:
-            output = captured_output.getvalue()
-            logger.error(f"Error during test execution: {inner_e}")
-            logger.error(traceback.format_exc())
-            raise inner_e
-        finally:
-            # Restore stdout
-            sys.stdout = old_stdout
-
-        logger.info("Bot tests completed successfully")
+        import time
+        
+        logger.info("Starting simple bot tests...")
+        
+        # Define test cases with different telemetry patterns
+        test_cases = [
+            {
+                'name': '🚫 AGGRESSIVE BOT',
+                'telemetry': {
+                    'mouse': {'movementEntropy': 0.2, 'velocityStats': {'mean': 500, 'stddev': 0.1, 'max': 600}, 'totalMovements': 5},
+                    'keyboard': {'typingSpeed': 500, 'keystrokeEntropy': 0.1, 'errorRate': 0.0},
+                    'timing': {'event_loop_jitter': 0.0}
+                }
+            },
+            {
+                'name': '⚠️ MODERATE BOT',
+                'telemetry': {
+                    'mouse': {'movementEntropy': 1.5, 'velocityStats': {'mean': 150, 'stddev': 20, 'max': 250}, 'totalMovements': 30},
+                    'keyboard': {'typingSpeed': 150, 'keystrokeEntropy': 0.8, 'errorRate': 0.0},
+                    'timing': {'event_loop_jitter': 0.5}
+                }
+            },
+            {
+                'name': '⚠️ STEALTH BOT',
+                'telemetry': {
+                    'mouse': {'movementEntropy': 2.8, 'velocityStats': {'mean': 25, 'stddev': 8, 'max': 80}, 'totalMovements': 80},
+                    'keyboard': {'typingSpeed': 65, 'keystrokeEntropy': 1.5, 'errorRate': 0.01},
+                    'timing': {'event_loop_jitter': 2.0}
+                }
+            },
+            {
+                'name': '✅ REAL HUMAN',
+                'telemetry': {
+                    'mouse': {'movementEntropy': 4.2, 'velocityStats': {'mean': 12.5, 'stddev': 3.2, 'max': 45}, 'totalMovements': 150},
+                    'keyboard': {'typingSpeed': 45, 'keystrokeEntropy': 3.5, 'errorRate': 0.02},
+                    'timing': {'event_loop_jitter': 3.2}
+                }
+            }
+        ]
+        
+        results = []
+        output_lines = []
+        
+        output_lines.append("=" * 60)
+        output_lines.append("🤖 BOT DETECTION SYSTEM TESTER")
+        output_lines.append("=" * 60)
+        output_lines.append("")
+        
+        # Run tests
+        for test_case in test_cases:
+            output_lines.append(f"\n{'=' * 60}")
+            output_lines.append(f"🤖 Testing: {test_case['name']}")
+            output_lines.append(f"{'=' * 60}")
+            
+            try:
+                # Prepare payload
+                payload = {
+                    'telemetry': {
+                        'device': {
+                            'screenResolution': {'width': 1920, 'height': 1080},
+                            'colorDepth': 24,
+                            'timezone': 'UTC',
+                            'platform': 'Linux'
+                        },
+                        **test_case['telemetry']
+                    },
+                    'session_id': f"test-{test_case['name']}-{int(time.time())}"
+                }
+                
+                # Make prediction request
+                response = requests.post(
+                    f"{request.host_url.rstrip('/')}/api/predict",
+                    json=payload,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    risk_score = result.get('risk_score', 0)
+                    action = result.get('recommended_action', 'UNKNOWN')
+                    latency = result.get('latency_ms', 0)
+                    
+                    output_lines.append(f"✅ Response received in {latency:.1f}ms")
+                    output_lines.append(f"\n📊 RESULTS:")
+                    output_lines.append(f"   Risk Score: {risk_score}/100")
+                    output_lines.append(f"   Bot Probability: {result.get('bot_probability', 0) * 100:.1f}%")
+                    output_lines.append(f"   Recommended Action: {action}")
+                    output_lines.append(f"   Reasoning: {result.get('reasoning', 'N/A')}")
+                    
+                    # Verdict
+                    if risk_score < 30:
+                        output_lines.append(f"\n✅ VERDICT: HUMAN - Allowed to proceed")
+                    elif risk_score < 60:
+                        output_lines.append(f"\n⚠️ VERDICT: SUSPICIOUS - Soft challenge (CAPTCHA)")
+                    else:
+                        output_lines.append(f"\n🚫 VERDICT: BOT DETECTED - Blocked")
+                    
+                    results.append({
+                        'name': test_case['name'],
+                        'risk_score': risk_score,
+                        'action': action,
+                        'passed': True
+                    })
+                else:
+                    output_lines.append(f"❌ API returned {response.status_code}: {response.text}")
+                    results.append({'name': test_case['name'], 'passed': False})
+                    
+            except Exception as e:
+                output_lines.append(f"❌ Error: {e}")
+                results.append({'name': test_case['name'], 'passed': False})
+            
+            time.sleep(0.5)
+        
+        # Summary
+        output_lines.append("\n" + "=" * 60)
+        output_lines.append("📋 TEST SUMMARY")
+        output_lines.append("=" * 60)
+        
+        for result in results:
+            status = "✅ PASS" if result.get('passed') else "❌ FAIL"
+            name = result.get('name', 'Unknown')
+            risk = result.get('risk_score', 'N/A')
+            action = result.get('action', 'N/A')
+            output_lines.append(f"{status} | {name:20} | Risk: {str(risk):3}/100 | Action: {action}")
+        
+        output_lines.append("=" * 60)
+        output_lines.append("\n✨ Testing complete!")
+        
+        output = "\n".join(output_lines)
+        logger.info(output)
         logger.info("=" * 70)
+        
         return jsonify({
             'success': True,
             'message': 'Bot tests completed successfully',

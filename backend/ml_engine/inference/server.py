@@ -242,10 +242,13 @@ def run_bot_tests():
         # Get the backend directory path
         backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-        # Run the bot simulator
+        # Get the API URL (use environment variable or construct from request)
+        api_url = os.environ.get('API_URL') or 'https://minor-project-backend-zp8v.onrender.com'
+
+        # Run the bot simulator with the API URL
         result = subprocess.run(
-            [sys.executable, 'bot_simulator.py'],
-            cwd=os.path.join(backend_dir, 'backend'),
+            [sys.executable, 'bot_simulator.py', api_url],
+            cwd=backend_dir,
             capture_output=True,
             text=True,
             timeout=60  # 60 second timeout

@@ -7,6 +7,8 @@ import requests
 import json
 import time
 import random
+import sys
+import os
 from typing import Dict, Any
 
 
@@ -350,7 +352,17 @@ class BotSimulator:
 
 def main():
     """Main entry point"""
-    simulator = BotSimulator()
+    # Get API URL from command line argument or environment variable
+    api_url = "http://localhost:8000"  # default
+
+    if len(sys.argv) > 1:
+        api_url = sys.argv[1]
+    elif os.environ.get('API_URL'):
+        api_url = os.environ.get('API_URL')
+
+    print(f"🤖 Using API URL: {api_url}")
+
+    simulator = BotSimulator(api_url)
 
     # Run all tests
     simulator.run_all_tests()

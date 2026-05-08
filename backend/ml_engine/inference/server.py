@@ -234,46 +234,43 @@ def debug_info():
 def run_bot_tests():
     """Run bot detection tests using the bot simulator"""
     try:
-        import subprocess
         import sys
+        import os
+        from io import StringIO
 
         logger.info("Starting bot tests...")
 
-        # Get the backend directory path
-        current_file = os.path.abspath(__file__)
-        logger.info(f"Current file path: {current_file}")
-        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(current_file)))
-        logger.info(f"Calculated backend dir: {backend_dir}")
+        # Import the bot simulator module directly
+        sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+        from bot_simulator import BotSimulator
 
-        # Get the API URL (use environment variable or construct from request)
+        # Get the API URL for this server
         api_url = os.environ.get('API_URL') or 'https://minor-project-backend-zp8v.onrender.com'
         logger.info(f"Using API URL: {api_url}")
 
-        # Run the bot simulator with the API URL
-        result = subprocess.run(
-            [sys.executable, 'bot_simulator.py', api_url],
-            cwd=backend_dir,
-            capture_output=True,
-            text=True,
-            timeout=60  # 60 second timeout
-        )
+        # Capture output
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = StringIO()
 
-        if result.returncode == 0:
-            logger.info("Bot tests completed successfully")
-            return jsonify({
-                'success': True,
-                'message': 'Bot tests completed successfully',
-                'output': result.stdout,
-                'error': result.stderr
-            }), 200
-        else:
-            logger.error(f"Bot tests failed with return code {result.returncode}")
-            return jsonify({
-                'success': False,
-                'message': 'Bot tests failed',
-                'output': result.stdout,
-                'error': result.stderr
-            }), 500
+        try:
+            # Create simulator and run tests
+            simulator = BotSimulator(api_url)
+            simulator.run_all_tests()
+
+            # Get the captured output
+            output = captured_output.getvalue()
+
+        finally:
+            # Restore stdout
+            sys.stdout = old_stdout
+
+        logger.info("Bot tests completed successfully")
+        return jsonify({
+            'success': True,
+            'message': 'Bot tests completed successfully',
+            'output': output,
+            'error': ''
+        }), 200
 
     except subprocess.TimeoutExpired:
         logger.error("Bot tests timed out")

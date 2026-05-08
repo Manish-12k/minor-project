@@ -230,6 +230,57 @@ def debug_info():
         'python_version': sys.version
     }), 200
 
+@app.route('/api/run-bot-tests', methods=['POST'])
+def run_bot_tests():
+    """Run bot detection tests using the bot simulator"""
+    try:
+        import subprocess
+        import sys
+
+        logger.info("Starting bot tests...")
+
+        # Get the backend directory path
+        backend_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+        # Run the bot simulator
+        result = subprocess.run(
+            [sys.executable, 'bot_simulator.py'],
+            cwd=os.path.join(backend_dir, 'backend'),
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout
+        )
+
+        if result.returncode == 0:
+            logger.info("Bot tests completed successfully")
+            return jsonify({
+                'success': True,
+                'message': 'Bot tests completed successfully',
+                'output': result.stdout,
+                'error': result.stderr
+            }), 200
+        else:
+            logger.error(f"Bot tests failed with return code {result.returncode}")
+            return jsonify({
+                'success': False,
+                'message': 'Bot tests failed',
+                'output': result.stdout,
+                'error': result.stderr
+            }), 500
+
+    except subprocess.TimeoutExpired:
+        logger.error("Bot tests timed out")
+        return jsonify({
+            'success': False,
+            'message': 'Bot tests timed out after 60 seconds'
+        }), 500
+    except Exception as e:
+        logger.error(f"Error running bot tests: {e}")
+        return jsonify({
+            'success': False,
+            'message': f'Error running bot tests: {str(e)}'
+        }), 500
+
 # ===== STARTUP =====
 
 def main():

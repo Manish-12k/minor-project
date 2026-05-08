@@ -14,6 +14,8 @@ const AdminDashboard: React.FC = () => {
   });
   const [logsLoading, setLogsLoading] = useState(false);
   const [configSaved, setConfigSaved] = useState(false);
+  const [testRunning, setTestRunning] = useState(false);
+  const [testResults, setTestResults] = useState<string>('');
 
   // Initialize database and load data
   useEffect(() => {
@@ -84,6 +86,38 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  const runBotTests = async () => {
+    setTestRunning(true);
+    setTestResults('');
+
+    try {
+      const response = await fetch(`${process.env.REACT_APP_API_URL || 'https://minor-project-backend-zp8v.onrender.com'}/api/run-bot-tests`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        setTestResults(`✅ Bot tests completed successfully!\n\n${result.output}`);
+        await db.logInfo('Bot detection tests completed successfully');
+        // Refresh logs to show new test entries
+        refreshLogs();
+      } else {
+        setTestResults(`❌ Bot tests failed:\n\n${result.error || result.message}`);
+        await db.logError(`Bot tests failed: ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error running bot tests:', error);
+      setTestResults(`❌ Error connecting to backend: ${error}`);
+      await db.logError(`Bot test connection error: ${error}`);
+    } finally {
+      setTestRunning(false);
+    }
+  };
+
   return (
     <div className="admin-dashboard">
       <header className="admin-header">
@@ -119,6 +153,12 @@ const AdminDashboard: React.FC = () => {
               onClick={() => setCurrentTab('logs')}
             >
               🔍 System Logs
+            </button>
+            <button
+              className={`nav-btn ${currentTab === 'testing' ? 'active' : ''}`}
+              onClick={() => setCurrentTab('testing')}
+            >
+              🧪 Testing Tools
             </button>
           </nav>
         </div>
@@ -305,6 +345,49 @@ const AdminDashboard: React.FC = () => {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* Testing Tab */}
+          {currentTab === 'testing' && (
+            <div className="admin-section">
+              <h2>🧪 Bot Detection Testing Tools</h2>
+              <p className="section-desc">Run automated tests to verify bot detection functionality</p>
+
+              <div className="testing-content">
+                <div className="test-card">
+                  <h3>🤖 Bot Simulation Tests</h3>
+                  <p>Run comprehensive bot detection tests using various bot behavior patterns</p>
+
+                  <div className="test-controls">
+                    <button
+                      className="run-test-btn"
+                      onClick={runBotTests}
+                      disabled={testRunning}
+                    >
+                      {testRunning ? '⏳ Running Tests...' : '🚀 Run Bot Tests'}
+                    </button>
+                  </div>
+
+                  {testResults && (
+                    <div className="test-results">
+                      <h4>Test Results:</h4>
+                      <pre className="test-output">{testResults}</pre>
+                    </div>
+                  )}
+
+                  <div className="test-info">
+                    <h4>What this test does:</h4>
+                    <ul>
+                      <li>Tests aggressive bot behavior (fast typing, linear mouse movement)</li>
+                      <li>Tests moderate bot behavior (some variation but still detectable)</li>
+                      <li>Tests stealth bot behavior (attempts to mimic human patterns)</li>
+                      <li>Tests human behavior baseline (natural movement and typing)</li>
+                      <li>Verifies ML model predictions and risk scoring</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
             </div>
           )}

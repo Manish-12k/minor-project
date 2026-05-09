@@ -17,6 +17,7 @@ const AdminDashboard: React.FC = () => {
   const [configSaved, setConfigSaved] = useState(false);
   const [testRunning, setTestRunning] = useState(false);
   const [testResults, setTestResults] = useState<string>('');
+  const [configSaving, setConfigSaving] = useState(false);
 
   // Initialize database and load data
   useEffect(() => {
@@ -43,19 +44,16 @@ const AdminDashboard: React.FC = () => {
       const response = await fetch(`${apiUrl}/api/config`);
       if (response.ok) {
         const configData = await response.json();
-        setConfig(configData);
-      } else {
-        console.error('Failed to load config from API');
-        // Fallback to default
-        setConfig({
-          botDetectionThreshold: 60,
-          softChallengeThreshold: 30,
-          maxLoginAttempts: 3,
-          modelUpdateInterval: 24
+        // Only update if the config actually changed to avoid unnecessary re-renders
+        setConfig(prevConfig => {
+          const changed = JSON.stringify(prevConfig) !== JSON.stringify(configData);
+          return changed ? configData : prevConfig;
         });
+      } else {
+        console.warn('Failed to load config from API, keeping current config');
       }
     } catch (error) {
-      console.error('Error loading config:', error);
+      console.warn('Error loading config from API, keeping current config:', error);
     }
   };
 
@@ -66,11 +64,11 @@ const AdminDashboard: React.FC = () => {
     }
   }, [currentTab]);
 
-  // Poll config for live updates
+  // Poll config for live updates (every 2 seconds for instant sync)
   useEffect(() => {
     const interval = setInterval(() => {
       loadConfigFromAPI();
-    }, 10000); // Poll every 10 seconds
+    }, 2000); // Poll every 2 seconds
 
     return () => clearInterval(interval);
   }, []);
@@ -95,6 +93,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const saveConfig = async () => {
+    setConfigSaving(true);
     try {
       const apiUrl = API_BASE_URL;
       const response = await fetch(`${apiUrl}/api/config`, {
@@ -108,14 +107,20 @@ const AdminDashboard: React.FC = () => {
       if (response.ok) {
         setConfigSaved(true);
         await db.logInfo(`Configuration updated: Bot threshold=${config.botDetectionThreshold}, Max attempts=${config.maxLoginAttempts}`);
-        setTimeout(() => setConfigSaved(false), 3000);
+        setTimeout(() => setConfigSaved(false), 2000);
+
+        // Immediately refresh config from server to ensure sync
+        setTimeout(() => loadConfigFromAPI(), 500);
       } else {
-        console.error('Failed to save config to API');
-        alert('Failed to save configuration. Please check the backend.');
+        const errorText = await response.text();
+        console.error('Failed to save config to API:', errorText);
+        alert(`Failed to save configuration: ${errorText}`);
       }
     } catch (error) {
       console.error('Error saving config:', error);
-      alert('Error saving configuration. Please check your connection.');
+      alert(`Error saving configuration: ${error}`);
+    } finally {
+      setConfigSaving(false);
     }
   };
 
@@ -309,7 +314,7 @@ const AdminDashboard: React.FC = () => {
                 <button className="refresh-btn" onClick={loadConfigFromAPI}>
                   🔄 Refresh Config
                 </button>
-                <span className="config-note">Changes sync across all devices automatically</span>
+                <span className="config-note">Changes sync instantly across all devices</span>
               </div>
 
               {configSaved && (
@@ -372,8 +377,12 @@ const AdminDashboard: React.FC = () => {
                 </div>
 
                 <div className="config-buttons">
-                  <button className="save-config-btn" onClick={saveConfig}>
-                    💾 Save Configuration
+                  <button
+                    className="save-config-btn"
+                    onClick={saveConfig}
+                    disabled={configSaving}
+                  >
+                    {configSaving ? '⏳ Saving...' : '💾 Save Configuration'}
                   </button>
                 </div>
               </div>

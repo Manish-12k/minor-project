@@ -125,21 +125,22 @@ class BotSimulator:
                 "maxTouchPoints": 0
             },
             "mouse": {
-                "movementEntropy": 2.8,  # Medium entropy (trying to mimic human)
+                "movementEntropy": 1.8,  # Lower entropy - more bot-like
                 "velocityStats": {
-                    "mean": 25,  # Reasonable speed
-                    "stddev": 8,  # Some variation (trying to be human)
-                    "max": 80
+                    "mean": 35,  # Faster than human average
+                    "stddev": 4,  # Less variation
+                    "max": 100
                 },
-                "totalMovements": 80  # Decent amount of movement
+                "totalMovements": 50  # Fewer movements
             },
             "keyboard": {
-                "typingSpeed": 65,  # Reasonable speed
-                "keystrokeEntropy": 1.5,  # Some variation
-                "errorRate": 0.01  # Few errors (trying to be human)
+                "typingSpeed": 85,  # Faster than typical human
+                "keystrokeEntropy": 1.0,  # Less variation in timing
+                "errorRate": 0.002  # Too few errors - suspicious
             },
             "timing": {
-                "event_loop_jitter": 2.0  # Some jitter
+                "event_loop_jitter": 1.5,  # Lower jitter - headless indicator
+                "headless_indicators": {"isHeadless": True}  # Add headless detection
             }
         }
 

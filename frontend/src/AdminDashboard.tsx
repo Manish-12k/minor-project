@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './AdminDashboard.css';
 import App from './App';
+import { API_BASE_URL } from './config';
 import { db, LogEntry, Config } from './services/databaseService';
 
 const AdminDashboard: React.FC = () => {
@@ -91,7 +92,7 @@ const AdminDashboard: React.FC = () => {
     setTestResults('');
 
     try {
-      const apiUrl = process.env.REACT_APP_API_URL || 'https://minor-project-backend-zp8v.onrender.com';
+      const apiUrl = API_BASE_URL;
       const response = await fetch(`${apiUrl}/api/run-bot-tests`, {
         method: 'POST',
         headers: {

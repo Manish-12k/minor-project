@@ -27,9 +27,8 @@ const AdminDashboard: React.FC = () => {
       const initialLogs = await db.getLogs(50);
       setLogs(initialLogs);
 
-      // Load config
-      const savedConfig = await db.getConfig();
-      setConfig(savedConfig);
+      // Load config from API
+      await loadConfigFromAPI();
 
       // Log that admin accessed dashboard
       await db.logInfo('Admin dashboard accessed');
@@ -38,12 +37,43 @@ const AdminDashboard: React.FC = () => {
     initDB();
   }, []);
 
+  const loadConfigFromAPI = async () => {
+    try {
+      const apiUrl = API_BASE_URL;
+      const response = await fetch(`${apiUrl}/api/config`);
+      if (response.ok) {
+        const configData = await response.json();
+        setConfig(configData);
+      } else {
+        console.error('Failed to load config from API');
+        // Fallback to default
+        setConfig({
+          botDetectionThreshold: 60,
+          softChallengeThreshold: 30,
+          maxLoginAttempts: 3,
+          modelUpdateInterval: 24
+        });
+      }
+    } catch (error) {
+      console.error('Error loading config:', error);
+    }
+  };
+
   // Refresh logs when tab changes to logs
   useEffect(() => {
     if (currentTab === 'logs') {
       refreshLogs();
     }
   }, [currentTab]);
+
+  // Poll config for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadConfigFromAPI();
+    }, 10000); // Poll every 10 seconds
+
+    return () => clearInterval(interval);
+  }, []);
 
   const refreshLogs = async () => {
     setLogsLoading(true);
@@ -66,12 +96,26 @@ const AdminDashboard: React.FC = () => {
 
   const saveConfig = async () => {
     try {
-      await db.saveConfig(config);
-      setConfigSaved(true);
-      await db.logInfo(`Configuration updated: Bot threshold=${config.botDetectionThreshold}, Max attempts=${config.maxLoginAttempts}`);
-      setTimeout(() => setConfigSaved(false), 3000);
+      const apiUrl = API_BASE_URL;
+      const response = await fetch(`${apiUrl}/api/config`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+      });
+
+      if (response.ok) {
+        setConfigSaved(true);
+        await db.logInfo(`Configuration updated: Bot threshold=${config.botDetectionThreshold}, Max attempts=${config.maxLoginAttempts}`);
+        setTimeout(() => setConfigSaved(false), 3000);
+      } else {
+        console.error('Failed to save config to API');
+        alert('Failed to save configuration. Please check the backend.');
+      }
     } catch (error) {
       console.error('Error saving config:', error);
+      alert('Error saving configuration. Please check your connection.');
     }
   };
 
@@ -260,6 +304,13 @@ const AdminDashboard: React.FC = () => {
             <div className="admin-section">
               <h2>⚙️ Configuration Settings</h2>
               <p className="section-desc">Manage system configuration and thresholds</p>
+
+              <div className="config-header">
+                <button className="refresh-btn" onClick={loadConfigFromAPI}>
+                  🔄 Refresh Config
+                </button>
+                <span className="config-note">Changes sync across all devices automatically</span>
+              </div>
 
               {configSaved && (
                 <div className="alert alert-success">

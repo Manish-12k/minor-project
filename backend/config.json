@@ -1,0 +1,6 @@
+{
+  "botDetectionThreshold": 60,
+  "softChallengeThreshold": 30,
+  "maxLoginAttempts": 3,
+  "modelUpdateInterval": 24
+}

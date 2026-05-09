@@ -36,6 +36,29 @@ CORS(app)
 model = None
 scaler = None
 
+# Global config
+config = None
+
+def load_config():
+    """Load configuration from config.json"""
+    global config
+    config_path = os.path.join(BACKEND_DIR, 'config.json')
+    try:
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        logger.info(f"✅ Config loaded from {config_path}")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Error loading config: {e}")
+        # Default config
+        config = {
+            "botDetectionThreshold": 60,
+            "softChallengeThreshold": 30,
+            "maxLoginAttempts": 3,
+            "modelUpdateInterval": 24
+        }
+        return False
+
 def load_model_and_scaler():
     """Load the trained XGBoost model and scaler"""
     global model, scaler
@@ -77,6 +100,10 @@ def load_model_and_scaler():
         logger.info("=" * 70)
         logger.info("✅ Models loaded successfully!")
         logger.info("=" * 70)
+
+        # Load config
+        load_config()
+
         return True
 
     except Exception as e:
@@ -399,6 +426,44 @@ def run_bot_tests():
             'error': traceback.format_exc()
         }), 500
 
+@app.route('/api/config', methods=['GET'])
+def get_config():
+    """Get current configuration"""
+    global config
+    if config is None:
+        load_config()
+    return jsonify(config), 200
+
+@app.route('/api/config', methods=['POST'])
+def update_config():
+    """Update configuration"""
+    global config
+    try:
+        new_config = request.get_json()
+        if not new_config:
+            return jsonify({'error': 'No JSON data provided'}), 400
+
+        # Validate required fields
+        required_fields = ['botDetectionThreshold', 'softChallengeThreshold', 'maxLoginAttempts', 'modelUpdateInterval']
+        for field in required_fields:
+            if field not in new_config:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+
+        # Update global config
+        config = new_config
+
+        # Save to file
+        config_path = os.path.join(BACKEND_DIR, 'config.json')
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+
+        logger.info(f"✅ Config updated: {config}")
+        return jsonify({'message': 'Configuration updated successfully', 'config': config}), 200
+
+    except Exception as e:
+        logger.error(f"❌ Error updating config: {e}")
+        return jsonify({'error': str(e)}), 500
+
 # ===== STARTUP =====
 
 def main():
@@ -415,6 +480,9 @@ def main():
         logger.error("\n❌ Failed to load models!")
         logger.error("Run: python ml_engine/retrain/pipeline.py")
         sys.exit(1)
+
+    # Load config (already loaded in load_model_and_scaler, but ensure it's loaded)
+    load_config()
 
     port = int(os.environ.get('PORT', os.environ.get('FLASK_PORT', '8000')))
 

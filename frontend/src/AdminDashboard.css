@@ -186,6 +186,23 @@
 }
 
 /* ===== CONFIGURATION TAB ===== */
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 15px;
+  background: #f0f7ff;
+  border-radius: 8px;
+  border: 1px solid #e0f2fe;
+}
+
+.config-note {
+  font-size: 0.85em;
+  color: #0369a1;
+  font-weight: 500;
+}
+
 .config-form {
   background: #f9fafb;
   padding: 25px;

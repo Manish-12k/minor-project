@@ -17,17 +17,47 @@ interface RiskResult {
   reasoning: string;
 }
 
+interface Config {
+  botDetectionThreshold: number;
+  softChallengeThreshold: number;
+  maxLoginAttempts: number;
+  modelUpdateInterval: number;
+}
+
 const App: React.FC = () => {
   const [telemetry, setTelemetry] = useState<TelemetryData | null>(null);
   const [riskResult, setRiskResult] = useState<RiskResult | null>(null);
+  const [config, setConfig] = useState<Config>({
+    botDetectionThreshold: 60,
+    softChallengeThreshold: 30,
+    maxLoginAttempts: 3,
+    modelUpdateInterval: 24
+  });
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [mouseX, setMouseX] = useState(0);
   const [mouseY, setMouseY] = useState(0);
   const sessionStartedAtRef = useRef<number>(Date.now());
 
+  const loadConfig = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/config`);
+      if (response.ok) {
+        const configData = await response.json();
+        setConfig(configData);
+      } else {
+        console.warn('Failed to load config, using defaults');
+      }
+    } catch (error) {
+      console.warn('Error loading config:', error);
+    }
+  };
+
   useEffect(() => {
     const simulateInit = async () => {
+      // Load config first
+      await loadConfig();
+
       const handleMouseMove = (e: MouseEvent) => {
         setMouseX(e.clientX);
         setMouseY(e.clientY);
@@ -77,6 +107,15 @@ const App: React.FC = () => {
     };
 
     simulateInit();
+  }, []);
+
+  // Poll config for live updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      loadConfig();
+    }, 5000); // Poll every 5 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   const sendToBackend = async () => {
@@ -196,7 +235,7 @@ const App: React.FC = () => {
               <section className="result-section">
                 <h2>🎯 Risk Assessment Result</h2>
 
-                <div className={`risk-card risk-${riskResult.risk_score < 33 ? 'low' : riskResult.risk_score < 67 ? 'medium' : 'high'}`}>
+                <div className={`risk-card risk-${riskResult.risk_score < config.softChallengeThreshold ? 'low' : riskResult.risk_score < config.botDetectionThreshold ? 'medium' : 'high'}`}>
                   <h3>Risk Score: {riskResult.risk_score}/100</h3>
 
                   <p><strong>Bot Probability:</strong> {(riskResult.bot_probability * 100).toFixed(1)}%</p>
@@ -204,13 +243,13 @@ const App: React.FC = () => {
                   <p><strong>Inference Latency:</strong> {riskResult.latency_ms}ms</p>
                   <p><strong>Reasoning:</strong> {riskResult.reasoning}</p>
 
-                  {riskResult.risk_score < 30 && (
+                  {riskResult.risk_score < config.softChallengeThreshold && (
                     <div className="status-low">✅ Low Risk - Access Allowed</div>
                   )}
-                  {riskResult.risk_score >= 30 && riskResult.risk_score < 60 && (
+                  {riskResult.risk_score >= config.softChallengeThreshold && riskResult.risk_score < config.botDetectionThreshold && (
                     <div className="status-medium">⚠️ Medium Risk - Soft Challenge Recommended</div>
                   )}
-                  {riskResult.risk_score >= 60 && (
+                  {riskResult.risk_score >= config.botDetectionThreshold && (
                     <div className="status-high">🚫 High Risk - Escalation Required</div>
                   )}
                 </div>

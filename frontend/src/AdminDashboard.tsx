@@ -18,6 +18,8 @@ const AdminDashboard: React.FC = () => {
   const [testRunning, setTestRunning] = useState(false);
   const [testResults, setTestResults] = useState<string>('');
   const [configSaving, setConfigSaving] = useState(false);
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
+  const [lastConfigUpdate, setLastConfigUpdate] = useState<number>(0);
 
   // Initialize database and load data
   useEffect(() => {
@@ -38,7 +40,12 @@ const AdminDashboard: React.FC = () => {
     initDB();
   }, []);
 
-  const loadConfigFromAPI = async () => {
+  const loadConfigFromAPI = async (forceUpdate = false) => {
+    // Skip polling if user is actively editing and it's not a forced update
+    if (isEditingConfig && !forceUpdate) {
+      return;
+    }
+
     try {
       const apiUrl = API_BASE_URL;
       const response = await fetch(`${apiUrl}/api/config`);
@@ -47,6 +54,9 @@ const AdminDashboard: React.FC = () => {
         // Only update if the config actually changed to avoid unnecessary re-renders
         setConfig(prevConfig => {
           const changed = JSON.stringify(prevConfig) !== JSON.stringify(configData);
+          if (changed) {
+            setLastConfigUpdate(Date.now());
+          }
           return changed ? configData : prevConfig;
         });
       } else {
@@ -64,14 +74,14 @@ const AdminDashboard: React.FC = () => {
     }
   }, [currentTab]);
 
-  // Poll config for live updates (every 2 seconds for instant sync)
+  // Poll config for live updates (every 3 seconds, but only when not editing)
   useEffect(() => {
     const interval = setInterval(() => {
       loadConfigFromAPI();
-    }, 2000); // Poll every 2 seconds
+    }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isEditingConfig]); // Re-run when editing state changes
 
   const refreshLogs = async () => {
     setLogsLoading(true);
@@ -86,6 +96,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const handleConfigChange = (field: keyof Config, value: number) => {
+    setIsEditingConfig(true); // Mark as editing
     setConfig(prev => ({
       ...prev,
       [field]: value
@@ -105,12 +116,13 @@ const AdminDashboard: React.FC = () => {
       });
 
       if (response.ok) {
+        const responseBody = await response.json();
+        setConfig(responseBody.config || config);
         setConfigSaved(true);
+        setIsEditingConfig(false); // Stop editing mode
+        setLastConfigUpdate(Date.now());
         await db.logInfo(`Configuration updated: Bot threshold=${config.botDetectionThreshold}, Max attempts=${config.maxLoginAttempts}`);
         setTimeout(() => setConfigSaved(false), 2000);
-
-        // Immediately refresh config from server to ensure sync
-        setTimeout(() => loadConfigFromAPI(), 500);
       } else {
         const errorText = await response.text();
         console.error('Failed to save config to API:', errorText);

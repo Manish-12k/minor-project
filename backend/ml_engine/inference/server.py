@@ -169,18 +169,28 @@ def predict_risk(telemetry: Dict[str, Any]) -> Dict[str, Any]:
         bot_probability = float(model.predict_proba(features_scaled)[0][1])
         risk_score = int(bot_probability * 100)
 
-        # Determine action
-        if risk_score < 30:
-            action = 'ALLOW'
-            reasoning = 'Low risk - human-like behavior detected'
-        elif risk_score < 60:
-            action = 'SOFT_CHALLENGE'
-            reasoning = 'Medium risk - CAPTCHA challenge recommended'
-        else:
-            action = 'BLOCK'
-            reasoning = 'High risk - bot behavior detected'
+        # Use live config thresholds
+        if config is None:
+            load_config()
 
-        logger.info(f"Prediction: risk={risk_score}, action={action}")
+        bot_threshold = int(config.get('botDetectionThreshold', 60))
+        soft_threshold = int(config.get('softChallengeThreshold', 30))
+
+        # Ensure thresholds are valid and ordered
+        bot_threshold = max(0, min(100, bot_threshold))
+        soft_threshold = max(0, min(bot_threshold, soft_threshold))
+
+        if risk_score >= bot_threshold:
+            action = 'BLOCK'
+            reasoning = f'High risk (>= {bot_threshold}) - bot behavior detected'
+        elif risk_score >= soft_threshold:
+            action = 'SOFT_CHALLENGE'
+            reasoning = f'Medium risk (>= {soft_threshold}) - CAPTCHA challenge recommended'
+        else:
+            action = 'ALLOW'
+            reasoning = f'Low risk (< {soft_threshold}) - human-like behavior detected'
+
+        logger.info(f"Prediction: risk={risk_score}, action={action}, bot_threshold={bot_threshold}, soft_threshold={soft_threshold}")
 
         return {
             'risk_score': risk_score,
@@ -232,6 +242,7 @@ def predict():
         # Predict
         import time
         start_time = time.time()
+        load_config()
         result = predict_risk(telemetry)
         latency_ms = (time.time() - start_time) * 1000
 
@@ -432,7 +443,9 @@ def get_config():
     global config
     if config is None:
         load_config()
-    return jsonify(config), 200
+    response = jsonify(config)
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    return response, 200
 
 @app.route('/api/config', methods=['POST'])
 def update_config():
@@ -448,6 +461,24 @@ def update_config():
         for field in required_fields:
             if field not in new_config:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
+
+        # Validate threshold order and ranges
+        bot_threshold = int(new_config.get('botDetectionThreshold', 60))
+        soft_threshold = int(new_config.get('softChallengeThreshold', 30))
+        max_login_attempts = int(new_config.get('maxLoginAttempts', 3))
+        model_update_interval = int(new_config.get('modelUpdateInterval', 24))
+
+        if not (0 <= soft_threshold <= bot_threshold <= 100):
+            return jsonify({'error': 'softChallengeThreshold must be <= botDetectionThreshold and both must be between 0 and 100'}), 400
+        if max_login_attempts < 1 or max_login_attempts > 100:
+            return jsonify({'error': 'maxLoginAttempts must be between 1 and 100'}), 400
+        if model_update_interval < 1 or model_update_interval > 168:
+            return jsonify({'error': 'modelUpdateInterval must be between 1 and 168 hours'}), 400
+
+        new_config['botDetectionThreshold'] = bot_threshold
+        new_config['softChallengeThreshold'] = soft_threshold
+        new_config['maxLoginAttempts'] = max_login_attempts
+        new_config['modelUpdateInterval'] = model_update_interval
 
         # Update global config
         config = new_config

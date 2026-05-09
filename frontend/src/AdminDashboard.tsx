@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './AdminDashboard.css';
 import App from './App';
 import { API_BASE_URL } from './config';
@@ -19,7 +19,6 @@ const AdminDashboard: React.FC = () => {
   const [testResults, setTestResults] = useState<string>('');
   const [configSaving, setConfigSaving] = useState(false);
   const [isEditingConfig, setIsEditingConfig] = useState(false);
-  const [lastConfigUpdate, setLastConfigUpdate] = useState<number>(0);
 
   // Initialize database and load data
   useEffect(() => {
@@ -38,9 +37,9 @@ const AdminDashboard: React.FC = () => {
     };
 
     initDB();
-  }, []);
+  }, [loadConfigFromAPI]);
 
-  const loadConfigFromAPI = async (forceUpdate = false) => {
+  const loadConfigFromAPI = useCallback(async (forceUpdate = false) => {
     // Skip polling if user is actively editing and it's not a forced update
     if (isEditingConfig && !forceUpdate) {
       return;
@@ -54,9 +53,6 @@ const AdminDashboard: React.FC = () => {
         // Only update if the config actually changed to avoid unnecessary re-renders
         setConfig(prevConfig => {
           const changed = JSON.stringify(prevConfig) !== JSON.stringify(configData);
-          if (changed) {
-            setLastConfigUpdate(Date.now());
-          }
           return changed ? configData : prevConfig;
         });
       } else {
@@ -65,7 +61,7 @@ const AdminDashboard: React.FC = () => {
     } catch (error) {
       console.warn('Error loading config from API, keeping current config:', error);
     }
-  };
+  }, [isEditingConfig]);
 
   // Refresh logs when tab changes to logs
   useEffect(() => {
@@ -81,7 +77,7 @@ const AdminDashboard: React.FC = () => {
     }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
-  }, [isEditingConfig]); // Re-run when editing state changes
+  }, [isEditingConfig, loadConfigFromAPI]); // Re-run when editing state changes
 
   const refreshLogs = async () => {
     setLogsLoading(true);
@@ -116,11 +112,8 @@ const AdminDashboard: React.FC = () => {
       });
 
       if (response.ok) {
-        const responseBody = await response.json();
-        setConfig(responseBody.config || config);
         setConfigSaved(true);
         setIsEditingConfig(false); // Stop editing mode
-        setLastConfigUpdate(Date.now());
         await db.logInfo(`Configuration updated: Bot threshold=${config.botDetectionThreshold}, Max attempts=${config.maxLoginAttempts}`);
         setTimeout(() => setConfigSaved(false), 2000);
       } else {
@@ -323,7 +316,7 @@ const AdminDashboard: React.FC = () => {
               <p className="section-desc">Manage system configuration and thresholds</p>
 
               <div className="config-header">
-                <button className="refresh-btn" onClick={loadConfigFromAPI}>
+                <button className="refresh-btn" onClick={() => loadConfigFromAPI(true)}>
                   🔄 Refresh Config
                 </button>
                 <span className="config-note">Changes sync instantly across all devices</span>
